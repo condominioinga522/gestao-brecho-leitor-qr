@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Leitor QR — Gestão Brechó</title>
+<style>
+:root{font-family:Arial,Helvetica,sans-serif;color:#17252b;background:#f1f6f8}*{box-sizing:border-box}body{margin:0;padding:16px}.app{max-width:560px;margin:0 auto;background:white;border-radius:16px;padding:18px;box-shadow:0 4px 22px #173c4a18}h1{font-size:22px;color:#104861;margin:0 0 8px}.hint{line-height:1.45;color:#4c5d63}.frame{position:relative;background:#111;border-radius:12px;overflow:hidden;min-height:240px;display:flex;align-items:center;justify-content:center;margin:14px 0}.frame video{width:100%;max-height:65vh;object-fit:cover}.target{position:absolute;width:68%;aspect-ratio:1;border:3px solid #52e59a;border-radius:18px;box-shadow:0 0 0 100vmax #0004;pointer-events:none}.buttons{display:flex;gap:8px;flex-wrap:wrap}.btn{border:0;border-radius:9px;padding:13px 15px;font-size:16px;font-weight:bold;background:#104861;color:white;cursor:pointer;flex:1}.btn.secondary{background:#e5eef1;color:#104861}.status{padding:12px;border-radius:8px;background:#edf5f7;min-height:45px;margin:12px 0;overflow-wrap:anywhere}.status.error{background:#fff0ef;color:#9b1c13}.code{font-weight:bold;font-size:21px;letter-spacing:1px}.small{font-size:12px;color:#63747a;margin-top:12px}#canvas{display:none}
+</style>
+<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
+</head>
+<body><main class="app">
+<h1>📷 Leitor QR — Gestão Brechó</h1>
+<p class="hint">Permita o acesso à câmera e mantenha o QR Code dentro do quadrado. Quando a etiqueta for reconhecida, o código será enviado de volta ao Gestão Brechó.</p>
+<div class="frame"><video id="video" playsinline muted></video><div class="target"></div></div>
+<div class="buttons"><button class="btn" id="start" onclick="iniciarCamera()">Iniciar câmera</button><button class="btn secondary" onclick="trocarCamera()">Trocar câmera</button><button class="btn secondary" onclick="pararCamera()">Pausar</button></div>
+<div id="status" class="status">Pronto para iniciar.</div>
+<div class="buttons"><button class="btn secondary" onclick="enviarCodigo()">Enviar código novamente</button><button class="btn secondary" onclick="window.close()">Voltar ao sistema</button></div>
+<p class="small">A câmera é usada somente nesta página para ler a etiqueta. O sistema principal valida o código antes de adicionar o produto ao carrinho.</p>
+<canvas id="canvas"></canvas>
+</main>
+<script>
+var stream=null, timer=null, facing='environment', ultimoCodigo='', enviando=false;
+var video=document.getElementById('video'), canvas=document.getElementById('canvas'), ctx=canvas.getContext('2d',{willReadFrequently:true});
+function status(msg,erro){var e=document.getElementById('status');e.className='status'+(erro?' error':'');e.textContent=msg;}
+async function iniciarCamera(){
+  pararCamera();
+  if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){status('Este navegador não disponibiliza câmera nesta página. Abra o link HTTPS no Chrome ou Safari atualizado.',true);return;}
+  try{
+    stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:facing},width:{ideal:1280},height:{ideal:720}},audio:false});
+    video.srcObject=stream;await video.play();status('Câmera ativa. Centralize o QR Code.');timer=setInterval(varrer,250);
+  }catch(e){status('Não foi possível acessar a câmera. Verifique se o site está em HTTPS e permita a câmera nas configurações do navegador. Detalhe: '+(e&&e.name?e.name:'erro'),true);}
+}
+function pararCamera(){if(timer){clearInterval(timer);timer=null;}if(stream){stream.getTracks().forEach(function(t){t.stop()});stream=null;}if(video)video.srcObject=null;}
+async function trocarCamera(){facing=facing==='environment'?'user':'environment';await iniciarCamera();}
+function varrer(){if(!stream||video.readyState<2||enviando)return;var w=video.videoWidth,h=video.videoHeight;if(!w||!h)return;canvas.width=Math.min(w,960);canvas.height=Math.round(h*canvas.width/w);ctx.drawImage(video,0,0,canvas.width,canvas.height);try{var d=ctx.getImageData(0,0,canvas.width,canvas.height);var r=window.jsQR?window.jsQR(d.data,d.width,d.height,{inversionAttempts:'attemptBoth'}):null;if(r&&r.data){var code=normalizar(r.data);if(code){ultimoCodigo=code;enviarCodigo();}}}catch(e){}}
+function normalizar(raw){var t=String(raw||'').trim();var m=t.match(/[?&]p=([^&#\s]+)/i);if(m){try{t=decodeURIComponent(m[1]);}catch(e){t=m[1];}}t=t.toUpperCase();var id=t.match(/B-\d{4,}/);return id?id[0]:t;}
+function enviarCodigo(){if(!ultimoCodigo){status('Nenhum código lido ainda. Centralize a etiqueta no quadrado.',true);return;}if(!window.opener||window.opener.closed){status('O sistema principal não está aberto. Volte ao Gestão Brechó e abra o leitor por lá.',true);return;}enviando=true;try{window.opener.postMessage({tipo:'GESTAO_BRECHO_QR',codigo:ultimoCodigo},'*');status('Código lido: '+ultimoCodigo+'. Enviado ao sistema. Você pode aproximar outra etiqueta.');if(navigator.vibrate)navigator.vibrate(80);setTimeout(function(){enviando=false;},1300);}catch(e){enviando=false;status('Não consegui enviar o código para a janela do sistema.',true);}}
+window.addEventListener('beforeunload',pararCamera);
+</script></body></html>
